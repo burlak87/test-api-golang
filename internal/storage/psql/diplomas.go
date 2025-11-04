@@ -4,7 +4,7 @@ import (
 	"context"
 	"gosmol/internal/domain"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v4/pgxpool"
 )
 
 type DiplomasRepo struct {
@@ -47,11 +47,24 @@ func (d *DiplomasRepo) SelectResource(id int64) (domain.Diploma, error) {
 
 func (d *DiplomasRepo) InsertResource(diploma domain.Diploma) (int64, error) {
 	var id int64
-	err := d.db.QueryRow(context.Background(), 
-		"INSERT INTO diplomas (title, description) VALUES ($1, $2) RETURNING id",
-		diploma.Title, diploma.Description).Scan(&id)
-	
-		return id, err
+	q := `
+		INSERT INTO diplomas 
+			(title, description) 
+		VALUES 
+			($1, $2) 
+		RETURNING id
+	`
+	err := d.db.QueryRow(context.Background(), q, diploma.Title, diploma.Description).Scan(&id)
+	// if err := d.db.QueryRow(context.Background(), q, diploma.Title, diploma.Description).Scan(&diploma.ID); err != nil {
+	//   if pgErr, ok := err.(*pgconn.PgError); ok {
+	//     newErr := fmt.Errorf(fmt.Sprintf("SQL Error: %s, Detail: %s, Where: %s, Code: %s, SQLState: %s", pgErr.Message, pgErr.Detail, pgErr.Where, pgErr.Code, pgErr.SQLState()))
+	//     fmt.Println(newErr)
+	//     return "", nil
+	//   }
+	//   return "", err
+	// }
+	//
+	return id, err
 }
 
 func (d *DiplomasRepo) RenovationResource(id int64, diploma domain.Diploma) (domain.Diploma, error) {

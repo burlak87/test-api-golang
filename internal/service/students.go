@@ -2,7 +2,9 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"gosmol/internal/domain"
+	"math"
 	"regexp"
 	"time"
 
@@ -16,6 +18,10 @@ type StudentsStorage interface {
 	RefreshStore(userID int64, token string, expiresAt time.Time) error
 	RefreshGet(token string) (int64, error)
 	RefreshDelete(token string) error
+	StudentBlocked(email string, windowStart time.Time) ([]map[string]interface{}, error)
+	LogAttempt(email string, result bool, attemptTime time.Time) error
+	GetFailedLogAttempts(email string, windowStart time.Time) (int, error)
+	BlockStudent(email, blockedUntil string) error
 }
 
 
@@ -62,27 +68,52 @@ func (s *Students) StudentsRegister(students domain.Student) error {
 
 func (s *Students) StudentsLogin(students domain.Student) (domain.TokenResponse,error) {
 	if students.Email == "" {
-		return domain.TokenResponse{}, errors.New("Invalid input")
+		return domain.TokenResponse{}, errors.New("invalid input")
 	}
-
+	
+	blocked, minutesLeft, err := s.IsUserBlocked(students.Email)
+	if err != nil {
+		return domain.TokenResponse{}, err
+	}
+	
+	if blocked {
+		return domain.TokenResponse{}, fmt.Errorf("your account is blocked for %d minutes", minutesLeft)
+	}
+	
 	stud, err := s.storage.SelectStudents(students.Email)
 	if err != nil {
-		return domain.TokenResponse{}, errors.New("Invalid credentials")
+		s.LogLoginAttempt(students.Email, false) // Логируем неудачную попытку
+		return domain.TokenResponse{}, errors.New("invalid credentials")
 	}
+	
 	err = bcrypt.CompareHashAndPassword([]byte(stud.PasswordHash), []byte(students.PasswordHash))
 	if err != nil {
-		return domain.TokenResponse{}, errors.New("Invalid credentials")
+		s.LogLoginAttempt(students.Email, false) // Логируем неудачную попытку
+		return domain.TokenResponse{}, errors.New("invalid credentials")
 	}
-
-	accessToken, err := s.GenerateAccessToken(students.ID)
+	
+	attempts, err := s.GetFailedAttempts(students.Email)
 	if err != nil {
 		return domain.TokenResponse{}, err
 	}
-	refreshToken, err := s.GenerateRefreshToken(students.ID)
+	
+	maxAttempts := int64(5)
+	if attempts >= maxAttempts {
+		s.BlockUser(students.Email)
+		return domain.TokenResponse{}, errors.New("too many failed attempts, account blocked")
+	}
+
+	accessToken, err := s.GenerateAccessToken(stud.ID)
 	if err != nil {
 		return domain.TokenResponse{}, err
 	}
-
+	
+	refreshToken, err := s.GenerateRefreshToken(stud.ID)
+	if err != nil {
+		return domain.TokenResponse{}, err
+	}
+	
+	s.LogLoginAttempt(students.Email, true) // Логируем успешную попытку
 	return domain.TokenResponse{AccessToken: accessToken, RefreshToken: refreshToken}, nil
 }
 
@@ -129,4 +160,70 @@ func (s *Students) GenerateRefreshToken(id int64) (string, error) {
 	expiresAt := time.Now().Add(7 * 24 * time.Hour)
 	err = s.storage.RefreshStore(id, signed, expiresAt)
 	return signed, err
+}
+
+func (s *Students) IsUserBlocked(email string) (bool, int64, error) {
+	now := time.Now().UTC()
+	windowStart := now
+	
+	result, err := s.storage.StudentBlocked(email, windowStart)
+	if err != nil {
+		fmt.Printf("Ошибка проверки блокировки: %v\n", err)
+		return false, 0, err
+	}
+	
+	if len(result) > 0 {
+		blockedUntilStr, ok := result[0]["blocked_until"].(string)
+		if !ok {
+			return false, 0, errors.New("invalid format for blocked_until")
+		}
+	
+		blockedUntil, err := time.Parse(time.RFC3339, blockedUntilStr)
+		if err != nil {
+			return false, 0, err
+		}
+	
+		minutesLeft := math.Ceil(time.Until(blockedUntil).Minutes())
+		if minutesLeft < 0 {
+			minutesLeft = 0
+		}
+	
+		return true, int64(minutesLeft), nil
+	}
+	
+	return false, 0, nil
+}
+
+func (s *Students) LogLoginAttempt(email string, result bool) {
+	attemptTime := time.Now().UTC()
+
+	err := s.storage.LogAttempt(email, result, attemptTime)
+	if err != nil {
+		fmt.Printf("Ошибка логирования: %v\n", err)
+	}
+}
+
+func (s *Students) GetFailedAttempts(email string) (int64, error) {
+	now := time.Now().UTC()
+	windowStart := now.Add(-1 * time.Minute)
+	
+	count, err := s.storage.GetFailedLogAttempts(email, windowStart)
+	if err != nil {
+		fmt.Printf("Ошибка подсчета попыток: %v\n", err)
+		return int64(0), err
+	}
+
+	return int64(count), err
+}
+
+func (s *Students) BlockUser(email string) {
+	now := time.Now()
+	blockedUntil := now.Add(1 * time.Minute).Format(time.RFC3339)
+
+	s.LogLoginAttempt(email, false)
+
+	err := s.storage.BlockStudent(email, blockedUntil)
+	if err != nil {
+		fmt.Printf("Ошибка блокировки: %v\n", err)
+	}
 }

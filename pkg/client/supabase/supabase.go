@@ -2,8 +2,9 @@ package supabase
 
 import (
 	"context"
+	"fmt"
 	"log"
-	"os"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -12,29 +13,33 @@ type SupabaseClient struct {
 	Pool *pgxpool.Pool
 }
 
-func NewSupabaseClient() (*SupabaseClient, error) {
-	dbURL := os.Getenv("SUPABASE_DB_URL")
+func NewSupabaseClient(dbURL string) (*SupabaseClient, error) {
 	if dbURL == "" {
-		log.Fatal("SUPABASE_DB_URL environment variable is not set")
+		return nil, fmt.Errorf("SUPABASE_CONNECT_DB environment variable is not set")
+	}
+
+	if !strings.HasPrefix(dbURL, "postgres://") {
+		dbURL = "postgres://" + dbURL
 	}
 
 	config, err := pgxpool.ParseConfig(dbURL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse database URL: %w", err)
 	}
+
 	config.MaxConns = 10
 	config.MinConns = 2
 	config.MaxConnLifetime = 300000000000
 
 	pool, err := pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create connection pool: %w", err)
 	}
 
 	var version string
 	if err := pool.QueryRow(context.Background(), "SELECT version()").Scan(&version); err != nil {
 		pool.Close()
-		return nil, err
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
 	log.Println("Connected to Supabase:", version)

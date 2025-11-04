@@ -1,16 +1,20 @@
-package app
+package main
 
 import (
-	"gosmol/internal/adapters/rest"
-	"gosmol/internal/service"
-	"gosmol/internal/storage/psql"
+	"context"
 	"net/http"
 	"os"
 
+	"github.com/joho/godotenv"
 	"github.com/julienschmidt/httprouter"
 	"github.com/rs/cors"
 
-	"gosmol/pkg/client/supabase"
+	"gosmol/internal/adapters/rest"
+	"gosmol/internal/config"
+	"gosmol/internal/service"
+	"gosmol/internal/storage/psql"
+
+	"gosmol/pkg/client/postgresql"
 	"gosmol/pkg/logging"
 )
 
@@ -21,29 +25,43 @@ const (
 )
 
 func main() {
+  logging.Init()
+
   logger := logging.GetLogger()
   logger.Infoln("Logger enabled")
 
+  err := godotenv.Load()
+  if err != nil {
+    logger.Fatalf("Error load file .env: %v", err)
+  }
+
   jwtSecret := os.Getenv("JWT_SECRET")
+  logger.Infof("secret %s", jwtSecret)
+
+  dbURL := os.Getenv("SUPABASE_CONNECT_DB")
+  logger.Infof("db url %s", dbURL)
+
   logger.Infoln("Config initializing")
 
   router := httprouter.New()
   logger.Infoln("Router initializing")
 
-  supabaseClient, err := supabase.NewSupabaseClient()
+  cfg := config.GetConfig()
+  logger.Infoln("Config initializing")
+
+  postgreSQLClient, err := postgresql.NewClient(context.TODO(), 3, cfg.StorageConfig)
   if err != nil {
-    logger.Fatalln("Failed to connect to Supabase", err)
-    // log.Fatal("Failed to connect to Supabase:", err)
+    logger.Fatalf("%v", err)
   }
-  defer supabaseClient.Close()
+
   logger.Infoln("Database initializing")
     
-  studentsRepo := psql.NewStudentsRepo(supabaseClient.Pool)
+  studentsRepo := psql.NewStudentsRepo(postgreSQLClient)
   studentsService := service.NewStudents(studentsRepo, jwtSecret)
   studentsHandler := rest.NewStudentsHandler(studentsService, logger)
   studentsHandler.Register(router)
 
-  diplomasRepo := psql.NewDiplomasRepo(supabaseClient.Pool)
+  diplomasRepo := psql.NewDiplomasRepo(postgreSQLClient)
   diplomasService := service.NewDiplomas(diplomasRepo)
   diplomasHandler := rest.NewDiplomasHandler(diplomasService, logger)
   diplomasHandler.Register(router, jwtSecret)

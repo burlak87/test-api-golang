@@ -10,8 +10,8 @@ listen:
   bind_ip: 0.0.0.0
   port: 10000
 storage:
-  host: localhost
+  host: "db"
   port: "5432"
-  database: postgres
-  username: postgres
-  password: postgres
+  database: "postgres"
+  username: "postgres"
+  password: "postgres"

@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"gosmol/internal/domain"
 )
 
@@ -40,39 +41,53 @@ func (d *Diplomas) GetResource(id int64) (domain.Diploma, error) {
 	return diploma, nil
 }
 
-func (d *Diplomas) CreateResource(diploma domain.Diploma) error {
-	if diploma.Title == "" {
-		return errors.New("Title invalid")
-	}
-	if len(diploma.Description) > 500 {
-		return errors.New("Description too long")
-	}
+func (d *Diplomas) CreateResource(diploma domain.Diploma) (domain.Diploma, error) { // меняем возвращаемое значение
+    if diploma.Title == "" {
+        return domain.Diploma{}, errors.New("Title invalid")
+    }
+    if len(diploma.Description) > 500 {
+        return domain.Diploma{}, errors.New("Description too long")
+    }
 
-	_, err := d.storage.InsertResource(diploma)
-	if err != nil {
-		return err
-	}
+    fmt.Printf("DEBUG SERVICE DIPLOMA CREATE: Calling storage.InsertResource\n")
+    id, err := d.storage.InsertResource(diploma)
+    if err != nil {
+        fmt.Printf("DEBUG SERVICE DIPLOMA CREATE: Storage error: %v\n", err)
+        return domain.Diploma{}, err
+    }
 
-	return nil
+    createdDiploma := domain.Diploma{
+        ID:          id,
+        Title:       diploma.Title,
+        Description: diploma.Description,
+    }
+    
+    fmt.Printf("DEBUG SERVICE DIPLOMA CREATE: SUCCESS - Created diploma with ID: %d\n", id)
+    return createdDiploma, nil
 }
 
-func (d *Diplomas) UpdateResource(id int64, diploma domain.Diploma) error {
-	if id == 0 {
-		return errors.New("id invalid")
-	}
-	if diploma.Title == "" {
-		return errors.New("Title invalid")
-	}
-	if len(diploma.Description) > 500 {
-		return errors.New("Description too long")
-	}
+func (d *Diplomas) UpdateResource(id int64, diploma domain.Diploma) (domain.Diploma, error) {
+    if id == 0 {
+        return domain.Diploma{}, errors.New("id invalid")
+    }
+    if diploma.Title == "" {
+        return domain.Diploma{}, errors.New("Title invalid")
+    }
+    if len(diploma.Description) > 500 {
+        return domain.Diploma{}, errors.New("Description too long")
+    }
 
-	_, err := d.storage.RenovationResource(id, diploma)
-	if err != nil {
-		return err
-	}
-
-	return nil
+    fmt.Printf("DEBUG SERVICE DIPLOMA UPDATE: Calling storage.RenovationResource\n")
+    updatedDiploma, err := d.storage.RenovationResource(id, diploma)
+    if err != nil {
+        fmt.Printf("DEBUG SERVICE DIPLOMA UPDATE: Storage error: %v\n", err)
+        return domain.Diploma{}, err
+    }
+    
+    updatedDiploma.ID = id
+    
+    fmt.Printf("DEBUG SERVICE DIPLOMA UPDATE: SUCCESS - Updated diploma with ID: %d\n", id)
+    return updatedDiploma, nil
 }
 
 func (d *Diplomas) DeleteResource(id int64) error {

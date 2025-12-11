@@ -56,12 +56,12 @@ func Init() {
 		FullTimestamp: true,
 	}
 
-	err := os.MkdirAll("logs", 0644)
+	err := os.MkdirAll("/tmp/logs", 0755)
 	if err != nil {
 		panic(err)
 	}
 
-	allFile, _ := os.OpenFile("logs/all.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0640)
+	allFile, _ := os.OpenFile("/tmp/logs/all.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0640)
 
 	l.SetOutput(io.Discard)
 

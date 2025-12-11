@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"fmt"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -13,12 +14,15 @@ type appHandler func(w http.ResponseWriter, r *http.Request) error
 
 func JWTMiddleware(jwtSecret string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Printf("DEBUG JWT MIDDLEWARE: Checking auth for %s %s\n", r.Method, r.URL.Path)
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
+			fmt.Printf("DEBUG JWT MIDDLEWARE: Missing token\n")
 			http.Error(w, "Missing token", http.StatusUnauthorized)
 			return
 		}
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		fmt.Printf("DEBUG JWT MIDDLEWARE: Token: %s...\n", tokenString[:10])
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error)  {
 			return []byte(jwtSecret), nil
 		})

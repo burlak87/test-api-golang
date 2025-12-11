@@ -8,57 +8,36 @@ import (
 )
 
 type Config struct {
-	Env         string `yml:"env" env-default:"development"`
+	Env         string `yaml:"env" env-default:"development"`
 	StorageConfig
 }
 
-// type HTTPServer struct {
-//   Address     string        `yml:"address" env-default:"0.0.0.0:8080"`
-//   Timeout     time.Duration `yml:"timeout" env-default:"5s"`
-//   IdleTimeout time.Duration `yml:"idle_timeout" env-default:"60s"`
-// }
-
 type StorageConfig struct {
-	Host     string `json:"host"`
-	Port     string `json:"port"`
-	Database string `json:"database"`
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Host     string `yaml:"host" env:"DB_HOST" env-default:"db"`
+	Port     string `yaml:"port" env:"DB_PORT" env-default:"5432"`
+	Database string `yaml:"database" env:"DB_NAME" env-default:"postgres"`
+	Username string `yaml:"username" env:"DB_USER" env-default:"postgres"`
+	Password string `yaml:"password" env:"DB_PASSWORD" env-default:"postgres"`
 }
 
 var instance *Config
 var once sync.Once
-
-// func MustLoad() *Config {
-// 	configPath := os.Getenv("CONFIG_PATH")
-
-// 	if configPath == "" {
-// 		log.Fatal("CONFIG_PATH environment variable is not set")
-// 	}
-
-// 	if _, err := os.Stat(configPath); err != nil {
-// 		log.Fatalf("error opening config file: %s", err)
-// 	}
-	
-// 	var cfg Config
-
-// 	if err := cleanenv.ReadConfig(configPath, &cfg); err != nil {
-// 		log.Fatalf("error reading config file: %s", err)
-// 	}
-
-// 	return &cfg
-// }
 
 func GetConfig() *Config {
 	once.Do(func() {
 		logger := logging.GetLogger()
 		logger.Info("read application configuration")
 		instance = &Config{}
-		if err := cleanenv.ReadConfig("config.yml", instance); err != nil {
-			help, _ := cleanenv.GetDescription(instance, nil)
-			logger.Info(help)
-			logger.Fatal(err)
+
+		if err := cleanenv.ReadEnv(instance); err != nil {
+			logger.Errorf("Error reading env vars: %v", err)
 		}
+		
+		if err := cleanenv.ReadConfig("/config.yml", instance); err != nil {
+			logger.Warnf("Config file not found, using env vars: %v", err)
+		}
+		
+		logger.Infof("Database config: %s:%s", instance.Host, instance.Port)
 	})
 	return instance
 }
